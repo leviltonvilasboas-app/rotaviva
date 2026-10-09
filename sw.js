@@ -12,6 +12,7 @@ const ARQUIVOS = [
   "./dados.js",
   "./mapa_coords.js",
   "./app.js",
+  "./firebase.js",
   "./manifest.json",
   "./icone.svg"
 ];
@@ -31,7 +32,7 @@ self.addEventListener("activate", e=>{
 self.addEventListener("fetch", e=>{
   const req = e.request;
   // mapas (tiles do OpenStreetMap) e Leaflet: tenta rede, não quebra se offline
-  if (req.url.includes("tile.openstreetmap.org") || req.url.includes("jsdelivr.net")) {
+  if (req.url.includes("tile.openstreetmap.org") || req.url.includes("jsdelivr.net") || req.url.includes("gstatic.com") || req.url.includes("firebase") || req.url.includes("googleapis.com")) {
     e.respondWith(fetch(req).catch(()=>caches.match(req)));
     return;
   }

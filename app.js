@@ -3,6 +3,15 @@
    Tudo salvo no localStorage do próprio aparelho.
    ============================================================ */
 
+/* rede de segurança: evita que erros do carregamento da nuvem (bloqueado
+   em preview/sandbox) apareçam como erro fatal — o app funciona em modo local. */
+try {
+  window.addEventListener("unhandledrejection", function(e){
+    console.warn("Promise rejeitada (tratada):", e && e.reason);
+    e.preventDefault();
+  });
+} catch(_){}
+
 const KEY = "rotaviva_v1";
 
 /* Armazenamento resiliente: usa localStorage quando disponível.
@@ -22,6 +31,61 @@ const store = {
    ============================================================ */
 let APP = carregarApp();
 let S = viagemAtiva();          // referência à viagem ativa
+
+/* ---------- integração com a nuvem (Firebase) ---------- */
+let _nuvemJaMesclou=false;
+function _aoReceberNuvem(appNuvem, veioDoCache){
+  // Primeira vez que recebe da nuvem: decide entre local e nuvem.
+  try {
+    if(!appNuvem || !appNuvem.viagens || !appNuvem.viagens.length) {
+      // nuvem vazia -> envia o que temos localmente
+      if(window.CLOUD && window.CLOUD.ready) salvarNaNuvem(APP);
+      return;
+    }
+    const localAtual = JSON.stringify(APP);
+    const nuvemStr = JSON.stringify(appNuvem);
+    if(localAtual === nuvemStr) return;   // iguais, nada a fazer
+    // adota a versão da nuvem (fonte de verdade entre aparelhos)
+    APP = appNuvem;
+    S = viagemAtiva();
+    store.set(KEY, JSON.stringify(APP));
+    _map=null;
+    render();
+    if(_nuvemJaMesclou) toast("Dados sincronizados");
+    _nuvemJaMesclou=true;
+  } catch(e){ console.warn("merge nuvem falhou", e); }
+}
+function _aoAtualizarNuvem(evento){
+  atualizarStatusNuvem();
+}
+function atualizarStatusNuvem(){
+  const el=document.querySelector("#cloud-status"); if(!el || !window.CLOUD) return;
+  const map={
+    local:["☁️ Local","var(--txt-dim)"],
+    sincronizando:["🔄 Sincronizando…","var(--warn)"],
+    salvando:["🔄 Salvando…","var(--warn)"],
+    nuvem:["✅ Nuvem","var(--ok)"],
+    offline:["📴 Offline (salvo)","var(--info)"],
+    erro:["⚠️ Só local","var(--danger)"]
+  };
+  const s=window.CLOUD.status||"local";
+  const [txt,cor]=map[s]||map.local;
+  el.textContent=txt; el.style.color=cor;
+  const full=document.querySelector("#cloud-status-full");
+  if(full){ full.textContent=txt; full.style.color=cor; }
+}
+function bootNuvem(){
+  try {
+    if(typeof iniciarFirebase!=="function") return;
+    window.CLOUD._aoReceberNuvem=_aoReceberNuvem;
+    const r = iniciarFirebase(_aoAtualizarNuvem);
+    if(r && typeof r.catch === "function"){
+      r.catch(err=>{ console.warn("Firebase boot falhou (ok em modo local):", err); });
+    }
+  } catch(err){
+    console.warn("bootNuvem erro (ok em modo local):", err);
+  }
+}
 
 function novaViagemBase(nome){
   return {
@@ -78,7 +142,15 @@ function carregarApp(){
 function viagemAtiva(){
   return APP.viagens.find(v=>v.id===APP.ativa) || APP.viagens[0];
 }
-function salvar(){ store.set(KEY, JSON.stringify(APP)); }
+let _syncTimer=null;
+function salvar(){
+  store.set(KEY, JSON.stringify(APP));           // sempre salva local (offline)
+  // sincroniza na nuvem com debounce (evita gravações excessivas)
+  if(window.CLOUD && window.CLOUD.ready){
+    clearTimeout(_syncTimer);
+    _syncTimer=setTimeout(()=>{ salvarNaNuvem(APP); }, 800);
+  }
+}
 
 function trocarViagem(id){
   APP.ativa = id; S = viagemAtiva(); salvar();
@@ -591,3 +663,5 @@ if(_bTog) _bTog.onclick=()=>{
 
 /* ---------- inicializa ---------- */
 render();
+bootNuvem();
+atualizarStatusNuvem();

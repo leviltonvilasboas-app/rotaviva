@@ -20,6 +20,7 @@
       <h1 id="hd-titulo">RotaViva</h1>
       <p id="hd-sub" style="cursor:pointer" onclick="document.querySelector('.tabbar button[data-view=&quot;viagens&quot;]').click()">▾ selecionar viagem</p>
     </div>
+    <div id="cloud-status" style="font-size:11px;font-weight:700;color:var(--txt-dim);white-space:nowrap;align-self:flex-start">☁️ Local</div>
   </header>
 
   
@@ -110,6 +111,11 @@
       <button class="btn" id="btn-salvar-ajustes">Salvar ajustes</button>
     </div>
     <div class="card">
+      <div class="section-title">Sincronização na nuvem</div>
+      <p class="hint" id="cloud-info">Seus dados são salvos no celular e sincronizados automaticamente na sua conta quando houver internet. Funciona offline.</p>
+      <div style="margin-top:8px;font-weight:700" id="cloud-status-full">☁️ Local</div>
+    </div>
+    <div class="card">
       <div class="section-title">Backup dos meus dados</div>
       <p class="hint">Tudo fica salvo no seu celular. Exporte um backup antes de viagens longas ou para passar a outro aparelho.</p>
       <div class="btn-row">
@@ -142,6 +148,7 @@
   <script src="https://cdn.jsdelivr.net/npm/leaflet@1/dist/leaflet.js"></script>
   <script src="dados.js"></script>
   <script src="mapa_coords.js"></script>
+  <script src="firebase.js"></script>
   <script src="app.js"></script>
   <script>
     if ("serviceWorker" in navigator) {
