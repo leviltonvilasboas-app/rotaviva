@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#0e1116">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1/dist/leaflet.css">
+  <link rel="stylesheet" href="estilo.css">
+  <title>Expedição Atacama 2027</title>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header class="topbar">
+    <div class="logo">🧭</div>
+    <div style="flex:1; min-width:0;">
+      <h1 id="hd-titulo">RotaViva</h1>
+      <p id="hd-sub" style="cursor:pointer" onclick="document.querySelector('.tabbar button[data-view=&quot;viagens&quot;]').click()">▾ selecionar viagem</p>
+    </div>
+  </header>
+
+  
+  <!-- ========== VIEW: MINHAS VIAGENS ========== -->
+  <section id="view-viagens" class="view">
+    <div class="section-title">Minhas viagens</div>
+    <div id="lista-viagens"></div>
+    <button class="btn" id="btn-nova-viagem">＋ Cadastrar nova viagem</button>
+    <p class="hint">Cada viagem tem seu próprio cronograma, rotas, paradas, gastos e checklists.</p>
+  </section>
+
+  <!-- ========== VIEW: RESUMO ========== -->
+  <section id="view-resumo" class="view active">
+    <div class="kpi-grid" id="kpi-grid"><!-- preenchido via JS --></div>
+
+    <div class="card">
+      <div class="section-title">Orçamento</div>
+      <div style="display:flex; justify-content:space-between; align-items:baseline;">
+        <div><div style="font-size:12px;color:var(--txt-dim)">Gasto / Orçamento</div>
+          <div style="font-size:20px;font-weight:800" id="res-gasto">R$ 0 / R$ 0</div></div>
+        <div id="res-pct" style="font-size:28px;font-weight:800;color:var(--accent)">0%</div>
+      </div>
+      <div class="kpi" style="padding:0;border:none;margin-top:10px;background:none">
+        <div class="bar"><i id="res-bar" style="width:0%"></i></div>
+      </div>
+      <div class="cat-bars" id="res-cats"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">Próxima etapa</div>
+      <div id="res-proxima"></div>
+    </div>
+  </section>
+
+  <!-- ========== VIEW: ROTEIRO ========== -->
+  <section id="view-roteiro" class="view">
+    <div class="section-title">Roteiro — 16 etapas</div>
+    <div id="lista-etapas"></div>
+    <button class="btn sec" id="btn-add-etapa">＋ Adicionar etapa</button>
+  </section>
+
+  <!-- ========== VIEW: MAPA ========== -->
+  <section id="view-mapa" class="view">
+    <div class="section-title">Mapa da rota</div>
+    <div id="mapa"></div>
+    <div class="btn-row">
+      <button class="btn sec sm" id="btn-fit" style="flex:1">🎯 Ver rota inteira</button>
+      <button class="btn sec sm" id="btn-toggle-paradas" style="flex:1">📍 Paradas: ON</button>
+    </div>
+    <p class="hint">Toque num marcador para ver o destino/parada. O mapa precisa de internet para carregar o fundo; os pontos ficam salvos offline.</p>
+  </section>
+
+
+  <!-- ========== VIEW: GASTOS ========== -->
+  <section id="view-gastos" class="view">
+    <div class="kpi-grid">
+      <div class="kpi accent"><div class="label">Total gasto</div>
+        <div class="value" id="g-total">R$ 0</div>
+        <div class="sub" id="g-saldo">Saldo: R$ 0</div></div>
+      <div class="kpi"><div class="label">Consumo médio</div>
+        <div class="value" id="g-consumo">— km/l</div>
+        <div class="sub">Planejado: 18 km/l</div></div>
+    </div>
+    <button class="btn" id="btn-add-gasto">＋ Registrar gasto</button>
+    <button class="btn sec" id="btn-add-abast">⛽ Registrar abastecimento</button>
+    <div class="card" style="margin-top:14px; padding:0;">
+      <div class="section-title" style="padding:14px 16px 0;">Lançamentos</div>
+      <div id="lista-gastos"></div>
+    </div>
+  </section>
+
+  <!-- ========== VIEW: CHECKLISTS ========== -->
+  <section id="view-check" class="view">
+    <div class="section-title">Checklists</div>
+    <div id="lista-checks"></div>
+  </section>
+
+  <!-- ========== VIEW: AJUSTES ========== -->
+  <section id="view-ajustes" class="view">
+    <div class="section-title">Ajustes & dados</div>
+    <div class="card">
+      <label class="fld">Orçamento total (R$)</label>
+      <input type="number" id="aj-orcamento">
+      <label class="fld">Consumo planejado (km/l)</label>
+      <input type="number" id="aj-consumo">
+      <label class="fld">Câmbio US$ → R$</label>
+      <input type="number" step="0.01" id="aj-cambio">
+      <button class="btn" id="btn-salvar-ajustes">Salvar ajustes</button>
+    </div>
+    <div class="card">
+      <div class="section-title">Backup dos meus dados</div>
+      <p class="hint">Tudo fica salvo no seu celular. Exporte um backup antes de viagens longas ou para passar a outro aparelho.</p>
+      <div class="btn-row">
+        <button class="btn sec sm" id="btn-export" style="flex:1">⬇️ Exportar</button>
+        <button class="btn sec sm" id="btn-import" style="flex:1">⬆️ Importar</button>
+      </div>
+      <input type="file" id="file-import" accept="application/json" hidden>
+      <button class="btn sec" id="btn-reset" style="color:var(--danger);border-color:var(--danger)">↺ Restaurar dados de fábrica</button>
+    </div>
+    <p class="hint" style="text-align:center">Expedição Atacama 2027 · protótipo v1</p>
+  </section>
+
+  <!-- NAV INFERIOR -->
+  <nav class="tabbar">
+    <button data-view="viagens"><span class="ic">🧳</span>Viagens</button>
+    <button data-view="resumo" class="active"><span class="ic">📊</span>Resumo</button>
+    <button data-view="roteiro"><span class="ic">📋</span>Roteiro</button>
+    <button data-view="mapa"><span class="ic">🗺️</span>Mapa</button>
+    <button data-view="gastos"><span class="ic">💰</span>Gastos</button>
+    <button data-view="check"><span class="ic">✅</span>Checklist</button>
+    <button data-view="ajustes"><span class="ic">⚙️</span>Ajustes</button>
+  </nav>
+
+  <!-- MODAL genérico -->
+  <div class="modal-bg" id="modal-bg">
+    <div class="modal" id="modal"></div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1/dist/leaflet.js"></script>
+  <script src="dados.js"></script>
+  <script src="mapa_coords.js"></script>
+  <script src="app.js"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", ()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
+    }
+  </script>
+</body>
+</html>
