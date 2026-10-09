@@ -181,7 +181,13 @@ textarea { resize:vertical; min-height:64px; }
 .modal-bg.show { display:flex; }
 .modal { background:var(--bg-2); width:100%; max-width:520px; border-radius:20px 20px 0 0;
   border-top:1px solid var(--border); padding:20px 18px calc(20px + var(--safe-bot));
-  max-height:88vh; overflow:auto; animation:slideup .25s ease; }
+  /* dvh acompanha o teclado no mobile (dynamic viewport height); vh é o fallback */
+  max-height:88vh; max-height:88dvh; overflow-y:auto; -webkit-overflow-scrolling:touch;
+  animation:slideup .25s ease; }
+/* quando um campo recebe foco, garante margem para ele rolar acima do teclado */
+.modal input, .modal select, .modal textarea { scroll-margin-bottom:120px; scroll-margin-top:20px; }
+/* o botão de salvar dentro do modal ganha respiro na base */
+.modal .btn:last-child { margin-bottom:4px; }
 @keyframes slideup { from{transform:translateY(100%);} to{transform:none;} }
 .modal h3 { font-size:17px; margin-bottom:4px; }
 .modal .close { float:right; background:none; border:none; color:var(--txt-dim); font-size:24px; cursor:pointer; }
@@ -228,3 +234,32 @@ textarea { resize:vertical; min-height:64px; }
 .ico-btn.del  { color:var(--danger); }
 .ico-btn.del:hover { border-color:var(--danger); }
 .ico-btn svg { display:block; }
+
+
+/* ---------- NAV: áreas de toque maiores (uso com luvas) ---------- */
+.tabbar button { min-height:56px; padding:8px 6px calc(10px + var(--safe-bot)); }
+.tabbar button .ic { font-size:23px; }
+.tabbar button { font-size:11px; }
+#btn-menu.active, #btn-menu:active { color:var(--accent); }
+
+/* ---------- MENU (folha inferior) ---------- */
+.menu-list { display:flex; flex-direction:column; gap:10px; margin-top:12px; }
+.menu-item {
+  display:flex; align-items:center; gap:14px; width:100%;
+  background:var(--card-2); border:1px solid var(--border); border-radius:14px;
+  padding:16px; cursor:pointer; color:var(--txt); text-align:left; min-height:64px;
+}
+.menu-item:active { transform:scale(.99); }
+.menu-item .mi-ic { font-size:24px; flex:none; width:30px; text-align:center; }
+.menu-item div { flex:1; min-width:0; }
+.menu-item b { display:block; font-size:15px; }
+.menu-item span { font-size:12px; color:var(--txt-dim); }
+.menu-item .mi-chev { color:var(--txt-dim); font-size:20px; flex:none; }
+
+
+/* ---------- CHIPS (detalhe da etapa) ---------- */
+.chip {
+  display:inline-flex; align-items:center; gap:4px;
+  background:var(--card-2); border:1px solid var(--border); border-radius:20px;
+  padding:5px 12px; font-size:12px; font-weight:600; color:var(--txt);
+}

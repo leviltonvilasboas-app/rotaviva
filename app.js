@@ -207,20 +207,55 @@ function toast(msg){
 }
 
 /* ---------- Navegação ---------- */
-document.querySelectorAll(".tabbar button").forEach(b=>{
-  b.onclick=()=>{
-    document.querySelectorAll(".tabbar button").forEach(x=>x.classList.remove("active"));
-    document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
-    b.classList.add("active");
-    $("#view-"+b.dataset.view).classList.add("active");
-    render();
-    aoAbrirView(b.dataset.view);
-    window.scrollTo(0,0);
-  };
+function irParaView(view, viaMenu){
+  document.querySelectorAll(".tabbar button").forEach(x=>x.classList.remove("active"));
+  document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+  const alvo=document.getElementById("view-"+view);
+  if(alvo) alvo.classList.add("active");
+  // marca a aba correspondente na tabbar (se existir)
+  const tab=document.querySelector('.tabbar button[data-view="'+view+'"]');
+  if(tab) tab.classList.add("active");
+  else { const bm=document.querySelector("#btn-menu"); if(bm && viaMenu) bm.classList.add("active"); }
+  render();
+  aoAbrirView(view);
+  window.scrollTo(0,0);
+}
+
+document.querySelectorAll(".tabbar button[data-view]").forEach(b=>{
+  b.onclick=()=>irParaView(b.dataset.view, false);
 });
 
+/* ---- Menu (folha inferior) com Viagens / Checklist / Ajustes ---- */
+function abrirMenu(){ const m=document.querySelector("#menu-bg"); if(m) m.classList.add("show"); }
+function fecharMenu(){ const m=document.querySelector("#menu-bg"); if(m) m.classList.remove("show"); }
+(function(){
+  const bMenu=document.querySelector("#btn-menu");
+  const bMenuTop=document.querySelector("#btn-menu-top");
+  if(bMenu) bMenu.onclick=abrirMenu;
+  if(bMenuTop) bMenuTop.onclick=abrirMenu;
+  const bg=document.querySelector("#menu-bg");
+  if(bg) bg.onclick=(e)=>{ if(e.target.id==="menu-bg") fecharMenu(); };
+  document.querySelectorAll(".menu-item[data-goto]").forEach(mi=>{
+    mi.onclick=()=>{ fecharMenu(); irParaView(mi.dataset.goto, true); };
+  });
+  const bEdit=document.querySelector("#btn-edit-viagem");
+  if(bEdit) bEdit.onclick=()=>formEditarViagem(APP.ativa);
+  const bVoltar=document.querySelector("#btn-voltar-roteiro");
+  if(bVoltar) bVoltar.onclick=()=>irParaView("roteiro", false);
+})();
+
 /* ---------- MODAL ---------- */
-function abrirModal(html){ $("#modal").innerHTML=html; $("#modal-bg").classList.add("show"); }
+function abrirModal(html){
+  $("#modal").innerHTML=html;
+  $("#modal-bg").classList.add("show");
+  // keyboard-avoiding: ao focar um campo, rola-o para a vista (acima do teclado)
+  const campos = document.querySelectorAll("#modal input, #modal select, #modal textarea");
+  campos.forEach(c=>{
+    c.addEventListener("focus", ()=>{
+      setTimeout(()=>{ try{ c.scrollIntoView({block:"center", behavior:"smooth"}); }catch(_){ } }, 250);
+    });
+  });
+}
 function fecharModal(){ $("#modal-bg").classList.remove("show"); }
 $("#modal-bg").onclick = e => { if(e.target.id==="modal-bg") fecharModal(); };
 
@@ -415,39 +450,68 @@ function irRoteiro(id){
    ============================================================ */
 function renderRoteiro(){
   $("#lista-etapas").innerHTML = S.etapas.map((e,i)=>{
-    const rev = /REVIS/i.test(e.tipo), crit=/crítico|Jama/i.test(e.tipo+e.insights.join(""));
+    const rev = /REVIS/i.test(e.tipo);
+    const nParadas = (e.paradas||[]).length;
     return `
     <div class="etapa" id="etapa-${e.id}">
-      <div class="etapa-head" onclick="toggleEtapa(${i})">
+      <div class="etapa-head" onclick="abrirEtapa(${i})">
         <div class="etapa-badge">${e.dia}</div>
         <div class="t">
-          <div class="rota">${e.destino}
-            ${rev?'<span class="flag rev">🔧 revisão</span>':''}
-          </div>
-          <div class="meta">${dataBR(e.data)} · ${e.origem} · ${e.km} km · ${paisNome(e.pais)}</div>
+          <div class="rota">${e.destino}${rev?' <span class="flag rev">🔧</span>':''}</div>
+          <div class="meta">${dataBR(e.data)} · ${e.km} km · ${paisNome(e.pais)}${nParadas?` · 📍${nParadas}`:''}</div>
         </div>
         <div class="chev">›</div>
       </div>
-      <div class="etapa-body">
-        <div class="info-row"><span class="ic">🌡️</span><span>${e.clima||"—"}</span></div>
-        <div class="info-row"><span class="ic">🏨</span><span>${e.hotel||"—"} ${e.hotelValor?("· "+brl(e.hotelValor)):""}</span></div>
-        <div class="info-row"><span class="ic">🌅</span><span>Nascer/Pôr do sol: ${e.nascerPor||"—"}</span></div>
-
-        ${e.insights&&e.insights.length?`<div style="margin-top:12px"><b style="font-size:13px">Dicas & destaques</b>
-          <ul class="lista-insights">${e.insights.map(x=>`<li>${x}</li>`).join("")}</ul></div>`:""}
-
-        <div style="margin-top:14px"><b style="font-size:13px">📍 Paradas & pontos de interesse</b>
-          <div id="paradas-${i}">${renderParadas(e,i)}</div>
-          <button class="btn sec sm" style="margin-top:8px" onclick="addParada(${i})">＋ Adicionar parada</button>
-        </div>
-
-        <div class="btn-row">
-          <button class="btn sec sm" style="flex:1" onclick="editarEtapa(${i})">✏️ Editar etapa</button>
-          <button class="btn sec sm" style="flex:1;color:var(--danger);border-color:var(--danger)" onclick="removerEtapa(${i})">🗑️ Remover</button>
-        </div>
-      </div>
     </div>`;
   }).join("");
+}
+
+/* abre a tela de detalhe dedicada da etapa */
+let _etapaAtual=null;
+function abrirEtapa(i){
+  _etapaAtual=i;
+  renderDetalheEtapa();
+  irParaView("etapa", true);
+}
+function renderDetalheEtapa(){
+  const i=_etapaAtual; const e=S.etapas[i]; if(!e) return;
+  const rev = /REVIS/i.test(e.tipo);
+  const box=document.querySelector("#etapa-detalhe"); if(!box) return;
+  box.innerHTML=`
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="etapa-badge" style="min-width:58px;height:58px">${e.dia}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:18px;font-weight:800">${e.destino}</div>
+          <div class="hint">${dataBR(e.data)} · ${e.origem} → ${e.destino}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        <span class="chip">📏 ${e.km} km</span>
+        <span class="chip">${paisNome(e.pais)}</span>
+        ${rev?'<span class="chip" style="color:var(--warn)">🔧 revisão</span>':''}
+        <span class="chip">${e.tipo||''}</span>
+      </div>
+      <div class="info-row"><span class="ic">🌡️</span><span>${e.clima||"—"}</span></div>
+      <div class="info-row"><span class="ic">🏨</span><span>${e.hotel||"—"} ${e.hotelValor?("· "+brl(e.hotelValor)):""}</span></div>
+      <div class="info-row"><span class="ic">🌅</span><span>Nascer/Pôr do sol: ${e.nascerPor||"—"}</span></div>
+    </div>
+
+    ${e.insights&&e.insights.length?`<div class="card">
+      <div class="section-title">Dicas & destaques</div>
+      <ul class="lista-insights">${e.insights.map(x=>`<li>${x}</li>`).join("")}</ul>
+    </div>`:""}
+
+    <div class="card">
+      <div class="section-title">📍 Paradas & pontos de interesse</div>
+      <div id="paradas-${i}">${renderParadas(e,i)}</div>
+      <button class="btn sec sm" style="margin-top:10px;width:100%" onclick="addParada(${i})">＋ Adicionar parada</button>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn sec sm" style="flex:1" onclick="editarEtapa(${i})">✏️ Editar etapa</button>
+      <button class="btn sec sm" style="flex:1;color:var(--danger);border-color:var(--danger)" onclick="removerEtapa(${i})">🗑️ Remover</button>
+    </div>`;
 }
 function renderParadas(e,i){
   if(!e.paradas||!e.paradas.length) return `<p class="hint">Nenhuma parada ainda. Adicione mirantes, fotos, abastecimentos…</p>`;
@@ -458,14 +522,14 @@ function renderParadas(e,i){
       <button class="ico-btn del" style="width:30px;height:30px" onclick="delParada(${i},${j})">${IC_LIXEIRA}</button>
     </div>`).join("");
 }
-function toggleEtapa(i){ document.getElementById("etapa-"+S.etapas[i].id).classList.toggle("open"); }
+function toggleEtapa(i){ abrirEtapa(i); }
 function toggleParada(i,j){ S.etapas[i].paradas[j].feito=!S.etapas[i].paradas[j].feito; salvar(); $("#paradas-"+i).innerHTML=renderParadas(S.etapas[i],i); }
 function delParada(i,j){
   const p=S.etapas[i].paradas[j]; if(!p) return;
   confirmar("Excluir parada?",
     `A parada <b>"${p.nome}"</b> será removida desta etapa.`,
     "Excluir parada",
-    ()=>{ S.etapas[i].paradas.splice(j,1); salvar(); $("#paradas-"+i).innerHTML=renderParadas(S.etapas[i],i); toast("Parada excluída"); });
+    ()=>{ S.etapas[i].paradas.splice(j,1); salvar(); $("#paradas-"+i).innerHTML=renderParadas(S.etapas[i],i); renderRoteiro(); toast("Parada excluída"); });
 }
 function addParada(i){
   abrirModal(`<button class="close" onclick="fecharModal()">×</button>
@@ -478,7 +542,7 @@ function addParada(i){
 function salvarParada(i){
   const nome=$("#mp-nome").value.trim(); if(!nome) return;
   S.etapas[i].paradas.push({nome,feito:false}); salvar(); fecharModal();
-  $("#paradas-"+i).innerHTML=renderParadas(S.etapas[i],i); toast("Parada adicionada");
+  $("#paradas-"+i).innerHTML=renderParadas(S.etapas[i],i); renderRoteiro(); toast("Parada adicionada");
 }
 
 /* editar / add / remover etapa */
@@ -522,14 +586,14 @@ function salvarEtapa(i){
   };
   obj.id = i>=0 ? S.etapas[i].id : "N"+Date.now();
   if(i>=0) S.etapas[i]=obj; else S.etapas.push(obj);
-  salvar(); fecharModal(); renderRoteiro(); renderResumo(); toast("Etapa salva");
+  salvar(); fecharModal(); renderRoteiro(); renderResumo(); if(_etapaAtual!==null && document.getElementById("view-etapa").classList.contains("active")) renderDetalheEtapa(); toast("Etapa salva");
 }
 function removerEtapa(i){
   const e=S.etapas[i]; if(!e) return;
   confirmar("Remover etapa?",
     `A etapa <b>${e.dia} — ${e.destino}</b> será removida do roteiro.`,
     "Remover etapa",
-    ()=>{ S.etapas.splice(i,1); salvar(); renderRoteiro(); renderResumo(); toast("Etapa removida"); });
+    ()=>{ S.etapas.splice(i,1); salvar(); renderRoteiro(); renderResumo(); irParaView("roteiro", false); toast("Etapa removida"); });
 }
 
 /* ============================================================
@@ -737,8 +801,17 @@ function initMapa(){
     maxZoom:18, attribution:"© OpenStreetMap"
   }).addTo(_map);
   _layerRota=L.layerGroup().addTo(_map);
-  _layerDest=L.layerGroup().addTo(_map);
-  _layerParadas=L.layerGroup().addTo(_map);
+  // agrupa marcadores próximos (clustering) quando o plugin está disponível;
+  // cai para layerGroup simples se não carregou (ex.: offline sem o plugin)
+  const temCluster = (typeof L.markerClusterGroup === "function");
+  _layerDest = temCluster
+    ? L.markerClusterGroup({ maxClusterRadius:45, showCoverageOnHover:false, spiderfyOnMaxZoom:true })
+    : L.layerGroup();
+  _layerParadas = temCluster
+    ? L.markerClusterGroup({ maxClusterRadius:40, showCoverageOnHover:false })
+    : L.layerGroup();
+  _map.addLayer(_layerDest);
+  _map.addLayer(_layerParadas);
   desenharMapa();
 }
 
@@ -755,8 +828,9 @@ function desenharMapa(){
     if(c){
       pts.push(c); bounds.push(c);
       const icon=L.divIcon({className:"", html:`<div class="pin-num">${i+1}</div>`, iconSize:[28,28], iconAnchor:[14,14]});
-      L.marker(c,{icon}).addTo(_layerDest)
+      const md=L.marker(c,{icon})
         .bindPopup(`<b>${e.dia} · ${e.destino}</b><br>${dataBR(e.data)} · ${e.km} km · ${paisNome(e.pais)}<br>🏨 ${e.hotel||"—"}`);
+      _layerDest.addLayer(md);
     }
     // paradas desta etapa
     (e.paradas||[]).forEach(p=>{

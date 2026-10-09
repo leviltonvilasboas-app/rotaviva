@@ -5,7 +5,7 @@
    do CACHE abaixo (v2 -> v3...) para forçar a renovação no celular.
    ============================================================ */
 
-const CACHE = "rotaviva-v3";   // << versão incrementada força atualização
+const CACHE = "rotaviva-v4";   // << versão incrementada força atualização
 const ARQUIVOS = [
   "./",
   "./index.html",
