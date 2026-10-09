@@ -1,7 +1,7 @@
 {
-  "name": "Expedição Atacama 2027",
-  "short_name": "Atacama 2027",
-  "description": "Planejamento e gestão da viagem de moto Brasília–Atacama 2027",
+  "name": "RotaViva",
+  "short_name": "RotaViva",
+  "description": "Planejamento e gestão de viagens de moto — roteiro, rotas, gastos e checklists.",
   "start_url": "./index.html",
   "display": "standalone",
   "orientation": "portrait",

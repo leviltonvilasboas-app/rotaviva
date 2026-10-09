@@ -207,6 +207,19 @@ function abrirModal(html){ $("#modal").innerHTML=html; $("#modal-bg").classList.
 function fecharModal(){ $("#modal-bg").classList.remove("show"); }
 $("#modal-bg").onclick = e => { if(e.target.id==="modal-bg") fecharModal(); };
 
+/* confirmação genérica reutilizável (evita exclusões acidentais) */
+let _acaoConfirmada=null;
+function confirmar(titulo, descricaoHTML, rotuloConfirmar, aoConfirmar){
+  _acaoConfirmada=aoConfirmar;
+  abrirModal(`<button class="close" onclick="fecharModal()">×</button>
+    <h3>${titulo}</h3>
+    <p class="hint">${descricaoHTML||"Esta ação não pode ser desfeita."}</p>
+    <div class="btn-row">
+      <button class="btn sec" style="flex:1" onclick="fecharModal()">Cancelar</button>
+      <button class="btn" style="flex:1;background:var(--danger);color:#fff" onclick="(function(){var f=_acaoConfirmada;_acaoConfirmada=null;fecharModal();if(f)f();})()">${rotuloConfirmar||"Excluir"}</button>
+    </div>`);
+}
+
 /* ============================================================
    RENDER PRINCIPAL
    ============================================================ */
@@ -300,7 +313,9 @@ function salvarRenome(id){
 }
 function confirmarExcluir(id){
   const v=APP.viagens.find(x=>x.id===id); if(!v) return;
-  if(confirm(`Excluir a viagem "${v.nome}" e todos os seus dados?`)) excluirViagem(id);
+  confirmar("Excluir viagem?",
+    `A viagem <b>"${v.nome}"</b> e todos os seus dados (roteiro, gastos, checklists) serão apagados. Esta ação não pode ser desfeita.`,
+    "Excluir viagem", ()=>excluirViagem(id));
 }
 
 /* ============================================================
@@ -395,12 +410,18 @@ function renderParadas(e,i){
     <div class="parada ${p.feito?'done':''}">
       <input type="checkbox" ${p.feito?'checked':''} onchange="toggleParada(${i},${j})">
       <span class="nome">${p.nome}</span>
-      <button class="del" onclick="delParada(${i},${j})">×</button>
+      <button class="ico-btn del" style="width:30px;height:30px" onclick="delParada(${i},${j})">${IC_LIXEIRA}</button>
     </div>`).join("");
 }
 function toggleEtapa(i){ document.getElementById("etapa-"+S.etapas[i].id).classList.toggle("open"); }
 function toggleParada(i,j){ S.etapas[i].paradas[j].feito=!S.etapas[i].paradas[j].feito; salvar(); $("#paradas-"+i).innerHTML=renderParadas(S.etapas[i],i); }
-function delParada(i,j){ S.etapas[i].paradas.splice(j,1); salvar(); $("#paradas-"+i).innerHTML=renderParadas(S.etapas[i],i); }
+function delParada(i,j){
+  const p=S.etapas[i].paradas[j]; if(!p) return;
+  confirmar("Excluir parada?",
+    `A parada <b>"${p.nome}"</b> será removida desta etapa.`,
+    "Excluir parada",
+    ()=>{ S.etapas[i].paradas.splice(j,1); salvar(); $("#paradas-"+i).innerHTML=renderParadas(S.etapas[i],i); toast("Parada excluída"); });
+}
 function addParada(i){
   abrirModal(`<button class="close" onclick="fecharModal()">×</button>
     <h3>Nova parada — ${S.etapas[i].dia}</h3>
@@ -459,12 +480,19 @@ function salvarEtapa(i){
   salvar(); fecharModal(); renderRoteiro(); renderResumo(); toast("Etapa salva");
 }
 function removerEtapa(i){
-  if(confirm("Remover a etapa "+S.etapas[i].dia+"?")){ S.etapas.splice(i,1); salvar(); renderRoteiro(); renderResumo(); toast("Etapa removida"); }
+  const e=S.etapas[i]; if(!e) return;
+  confirmar("Remover etapa?",
+    `A etapa <b>${e.dia} — ${e.destino}</b> será removida do roteiro.`,
+    "Remover etapa",
+    ()=>{ S.etapas.splice(i,1); salvar(); renderRoteiro(); renderResumo(); toast("Etapa removida"); });
 }
 
 /* ============================================================
    VIEW GASTOS
    ============================================================ */
+const IC_LAPIS = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+const IC_LIXEIRA = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
+
 function renderGastos(){
   const g=totalGasto(), saldo=S.viagem.orcamentoTotal-g, cm=consumoMedio();
   $("#g-total").textContent = brl(g);
@@ -480,11 +508,72 @@ function renderGastos(){
       <div class="cat-ic">${catIcon(gg.categoria)}</div>
       <div class="g-t"><b>${gg.desc||gg.categoria}</b><span>${gg.categoria}${extra?" · "+extra:""}</span></div>
       <div class="g-v">${brl(gg.valor)}</div>
-      <button class="del" onclick="delGasto(${idx})">×</button>
+      <div class="g-acoes">
+        <button class="ico-btn edit" title="Editar" onclick="editarGasto(${idx})">${IC_LAPIS}</button>
+        <button class="ico-btn del" title="Excluir" onclick="pedirExcluirGasto(${idx})">${IC_LIXEIRA}</button>
+      </div>
     </div>`;
   }).join("") : `<p class="empty">Nenhum lançamento ainda.<br>Toque em <b>Registrar gasto</b> acima.</p>`;
 }
-function delGasto(i){ S.gastos.splice(i,1); salvar(); renderGastos(); renderResumo(); }
+
+/* excluir com confirmação */
+function pedirExcluirGasto(i){
+  const gg=S.gastos[i]; if(!gg) return;
+  abrirModal(`<button class="close" onclick="fecharModal()">×</button>
+    <h3>Excluir lançamento?</h3>
+    <p class="hint">Esta ação não pode ser desfeita.</p>
+    <div class="card flat" style="margin-top:12px;background:var(--card-2)">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="cat-ic">${catIcon(gg.categoria)}</div>
+        <div style="flex:1"><b>${gg.desc||gg.categoria}</b>
+          <div class="hint">${gg.categoria}${gg.data?(" · "+dataBR(gg.data)):""}</div></div>
+        <b>${brl(gg.valor)}</b>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn sec" style="flex:1" onclick="fecharModal()">Cancelar</button>
+      <button class="btn" style="flex:1;background:var(--danger);color:#fff" onclick="confirmarExcluirGasto(${i})">Excluir</button>
+    </div>`);
+}
+function confirmarExcluirGasto(i){ S.gastos.splice(i,1); salvar(); fecharModal(); renderGastos(); renderResumo(); toast("Lançamento excluído"); }
+
+/* editar lançamento (gasto comum OU abastecimento) */
+function editarGasto(i){
+  const gg=S.gastos[i]; if(!gg) return;
+  const ehAbast = (gg.km!==undefined || gg.litros!==undefined);
+  const opts=S.categorias.map(c=>`<option value="${c}"${c===gg.categoria?" selected":""}>${catIcon(c)} ${c}</option>`).join("");
+  let campos = `
+    <label class="fld">Descrição</label><input id="ed-desc" value="${(gg.desc||'').replace(/"/g,'&quot;')}">
+    <div class="row2">
+      <div><label class="fld">Valor (R$)</label><input id="ed-valor" type="number" inputmode="decimal" value="${gg.valor}"></div>
+      <div><label class="fld">Categoria</label><select id="ed-cat">${opts}</select></div>
+    </div>
+    <label class="fld">Data</label><input id="ed-data" type="date" value="${gg.data||''}">`;
+  if(ehAbast){
+    campos += `
+    <div class="row2">
+      <div><label class="fld">KM rodados</label><input id="ed-km" type="number" inputmode="decimal" value="${gg.km||''}"></div>
+      <div><label class="fld">Litros</label><input id="ed-lt" type="number" inputmode="decimal" value="${gg.litros||''}"></div>
+    </div>`;
+  }
+  abrirModal(`<button class="close" onclick="fecharModal()">×</button>
+    <h3>Editar lançamento</h3>
+    ${campos}
+    <button class="btn" onclick="salvarEdicaoGasto(${i})">Salvar alterações</button>`);
+}
+function salvarEdicaoGasto(i){
+  const gg=S.gastos[i]; if(!gg) return;
+  const valor=Number($("#ed-valor").value)||0;
+  if(valor<=0){ toast("Informe um valor"); return; }
+  gg.desc=$("#ed-desc").value.trim();
+  gg.valor=valor;
+  gg.categoria=$("#ed-cat").value;
+  gg.data=$("#ed-data").value;
+  const ekm=document.querySelector("#ed-km"), elt=document.querySelector("#ed-lt");
+  if(ekm) gg.km=Number(ekm.value)||0;
+  if(elt) gg.litros=Number(elt.value)||0;
+  salvar(); fecharModal(); renderGastos(); renderResumo(); toast("Lançamento atualizado");
+}
 
 function modalGasto(){
   const opts=S.categorias.map(c=>`<option value="${c}">${catIcon(c)} ${c}</option>`).join("");
@@ -570,9 +659,10 @@ $("#file-import").onchange=e=>{
   r.readAsText(f);
 };
 $("#btn-reset").onclick=()=>{
-  if(confirm("Isso apaga suas edições e volta aos dados originais. Continuar?")){
-    store.del(KEY); APP=carregarApp(); S=viagemAtiva(); _map=null; render(); toast("Dados restaurados");
-  }
+  confirmar("Restaurar dados de fábrica?",
+    "Todas as suas viagens, gastos e edições serão apagados e o app voltará ao estado original. Esta ação não pode ser desfeita.",
+    "Restaurar tudo",
+    ()=>{ store.del(KEY); APP=carregarApp(); S=viagemAtiva(); _map=null; render(); toast("Dados restaurados"); });
 };
 
 /* botões add */
