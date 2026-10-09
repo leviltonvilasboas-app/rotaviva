@@ -514,13 +514,18 @@ function renderDetalheEtapa(){
     </div>`;
 }
 function renderParadas(e,i){
-  if(!e.paradas||!e.paradas.length) return `<p class="hint">Nenhuma parada ainda. Adicione mirantes, fotos, abastecimentos…</p>`;
-  return e.paradas.map((p,j)=>`
+  if(!e.paradas||!e.paradas.length) return `<p class="hint">Nenhuma parada ainda. Toque em adicionar para incluir abastecimento, aduana, ponto cênico…</p>`;
+  return e.paradas.map((p,j)=>{
+    const c=catParada(p.cat);
+    return `
     <div class="parada ${p.feito?'done':''}">
       <input type="checkbox" ${p.feito?'checked':''} onchange="toggleParada(${i},${j})">
-      <span class="nome">${p.nome}</span>
+      <span class="cat-badge" style="background:${c.cor}" title="${c.label}">${c.icone}</span>
+      <span class="nome">${p.nome}<br><span class="cat-label" style="color:${c.cor}">${c.label}</span></span>
+      <button class="ico-btn edit" style="width:30px;height:30px" onclick="editarParada(${i},${j})">${IC_LAPIS}</button>
       <button class="ico-btn del" style="width:30px;height:30px" onclick="delParada(${i},${j})">${IC_LIXEIRA}</button>
-    </div>`).join("");
+    </div>`;
+  }).join("");
 }
 function toggleEtapa(i){ abrirEtapa(i); }
 function toggleParada(i,j){ S.etapas[i].paradas[j].feito=!S.etapas[i].paradas[j].feito; salvar(); $("#paradas-"+i).innerHTML=renderParadas(S.etapas[i],i); }
@@ -531,18 +536,117 @@ function delParada(i,j){
     "Excluir parada",
     ()=>{ S.etapas[i].paradas.splice(j,1); salvar(); $("#paradas-"+i).innerHTML=renderParadas(S.etapas[i],i); renderRoteiro(); toast("Parada excluída"); });
 }
+function chipsCategoria(sel){
+  const cats=CATS();
+  const chips=Object.keys(cats).map(k=>{
+    const c=cats[k]; const on=(k===sel);
+    return `<button type="button" class="cat-chip${on?' sel':''}" data-cat="${k}"
+      style="${on?('background:'+c.cor+';border-color:'+c.cor+';color:#111'):''}"
+      onclick="selecionarChip(this)">${c.icone} ${c.label}</button>`;
+  }).join("");
+  const addBtn=`<button type="button" class="cat-chip novo" onclick="formNovaCategoria('parada')">＋ Nova categoria</button>`;
+  return `<div class="cat-chips" data-sel="${sel||''}">${chips}${addBtn}</div>`;
+}
+
+/* criar nova categoria personalizada (ícone + nome + cor) */
+const CORES_CAT=["#ff6b35","#3b82f6","#22c55e","#eab308","#9aa7b4","#a855f7","#ec4899","#14b8a6","#f97316","#64748b"];
+const ICONES_CAT=["📍","⛽","🛂","📸","🍔","🛏️","🏔️","🏍️","🔧","💧","🏛️","🛣️","⚓","🎟️","☕"];
+let _origemCat="parada";   // "parada" | "ajustes"
+function formNovaCategoria(origem){
+  _origemCat = origem || "parada";
+  const cores=CORES_CAT.map((c,n)=>`<button type="button" class="swatch" data-cor="${c}" style="background:${c}" onclick="selSwatch(this,'cor')"></button>`).join("");
+  const icones=ICONES_CAT.map((ic)=>`<button type="button" class="swatch ic" data-ic="${ic}" onclick="selSwatch(this,'ic')">${ic}</button>`).join("");
+  abrirModal(`<button class="close" onclick="fecharModal()">×</button>
+    <h3>Nova categoria</h3>
+    <label class="fld">Nome</label>
+    <input id="nc-nome" placeholder="Ex.: Pedágio" autofocus>
+    <label class="fld">Ícone</label>
+    <div class="swatches" id="nc-icones">${icones}</div>
+    <label class="fld">Cor</label>
+    <div class="swatches" id="nc-cores">${cores}</div>
+    <button class="btn" onclick="salvarNovaCategoria()">Criar categoria</button>`);
+}
+function selSwatch(btn,tipo){
+  const wrap=btn.parentNode;
+  wrap.querySelectorAll(".swatch").forEach(b=>b.classList.remove("sel"));
+  btn.classList.add("sel");
+  wrap.dataset.val = (tipo==="cor") ? btn.dataset.cor : btn.dataset.ic;
+}
+function salvarNovaCategoria(){
+  const nome=$("#nc-nome").value.trim();
+  const ic=document.querySelector("#nc-icones").dataset.val;
+  const cor=document.querySelector("#nc-cores").dataset.val;
+  if(!nome){ toast("Dê um nome"); return; }
+  if(!ic){ toast("Escolha um ícone"); return; }
+  if(!cor){ toast("Escolha uma cor"); return; }
+  const key="cat"+Date.now();
+  garantirCategorias();
+  APP.catParadas[key]={ label:nome, icone:ic, cor:cor, fixa:false };
+  salvar();
+  toast("Categoria criada");
+  if(_origemCat==="ajustes"){
+    fecharModal();
+    renderCategoriasAjustes();   // atualiza a lista em Ajustes
+  } else if(_etapaAtual!==null){
+    addParadaComCat(_etapaAtual, key);  // volta ao modal de parada já selecionada
+  } else {
+    fecharModal();
+  }
+  _origemCat="parada";
+}
+/* reabre addParada já com a categoria recém-criada marcada */
+function addParadaComCat(i, catKey){
+  addParada(i);
+  const wrap=document.querySelector("#modal .cat-chips");
+  if(wrap){
+    const btn=wrap.querySelector(`.cat-chip[data-cat="${catKey}"]`);
+    if(btn) selecionarChip(btn);
+  }
+}
+function selecionarChip(btn){
+  const wrap=btn.parentNode;
+  wrap.querySelectorAll(".cat-chip").forEach(b=>{ b.classList.remove("sel"); b.style.background=""; b.style.borderColor=""; b.style.color=""; });
+  const k=btn.dataset.cat, c=CAT_PARADA[k];
+  btn.classList.add("sel"); btn.style.background=c.cor; btn.style.borderColor=c.cor; btn.style.color="#111";
+  wrap.dataset.sel=k;
+}
 function addParada(i){
   abrirModal(`<button class="close" onclick="fecharModal()">×</button>
     <h3>Nova parada — ${S.etapas[i].dia}</h3>
-    <p class="hint">Mirante, ponto fotográfico, abastecimento, atração para contemplar antes do destino.</p>
+    <label class="fld">Categoria</label>
+    ${chipsCategoria("")}
     <label class="fld">Nome da parada</label>
-    <input id="mp-nome" placeholder="Ex.: Mirante da Cuesta de Lipán" autofocus>
-    <button class="btn" onclick="salvarParada(${i})">Adicionar</button>`);
+    <input id="mp-nome" placeholder="Ex.: Posto YPF em Susques" autofocus>
+    <button class="btn" onclick="salvarParada(${i})">Adicionar parada</button>`);
 }
 function salvarParada(i){
-  const nome=$("#mp-nome").value.trim(); if(!nome) return;
-  S.etapas[i].paradas.push({nome,feito:false}); salvar(); fecharModal();
+  const nome=$("#mp-nome").value.trim();
+  const wrap=document.querySelector("#modal .cat-chips");
+  const cat=wrap?wrap.dataset.sel:"";
+  if(!cat){ toast("Escolha uma categoria"); return; }
+  if(!nome){ toast("Dê um nome à parada"); return; }
+  S.etapas[i].paradas.push({nome,cat,feito:false}); salvar(); fecharModal();
   $("#paradas-"+i).innerHTML=renderParadas(S.etapas[i],i); renderRoteiro(); toast("Parada adicionada");
+}
+function editarParada(i,j){
+  const p=S.etapas[i].paradas[j]; if(!p) return;
+  abrirModal(`<button class="close" onclick="fecharModal()">×</button>
+    <h3>Editar parada</h3>
+    <label class="fld">Categoria</label>
+    ${chipsCategoria(p.cat||CAT_PARADA_PADRAO)}
+    <label class="fld">Nome da parada</label>
+    <input id="mp-nome" value="${(p.nome||'').replace(/"/g,'&quot;')}">
+    <button class="btn" onclick="salvarEdicaoParada(${i},${j})">Salvar</button>`);
+}
+function salvarEdicaoParada(i,j){
+  const p=S.etapas[i].paradas[j]; if(!p) return;
+  const nome=$("#mp-nome").value.trim();
+  const wrap=document.querySelector("#modal .cat-chips");
+  const cat=wrap?wrap.dataset.sel:(p.cat||CAT_PARADA_PADRAO);
+  if(!cat){ toast("Escolha uma categoria"); return; }
+  if(!nome){ toast("Dê um nome"); return; }
+  p.nome=nome; p.cat=cat; salvar(); fecharModal();
+  $("#paradas-"+i).innerHTML=renderParadas(S.etapas[i],i); renderRoteiro(); toast("Parada atualizada");
 }
 
 /* editar / add / remover etapa */
@@ -600,6 +704,31 @@ function removerEtapa(i){
    VIEW GASTOS
    ============================================================ */
 const IC_LAPIS = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+/* categorias padrão (semente) — não podem ser excluídas */
+const CAT_PARADA_DEFAULT = {
+  abastecimento: { label:"Abastecimento", icone:"⛽", cor:"#ff6b35", fixa:true },
+  aduana:        { label:"Aduana / Imigração", icone:"🛂", cor:"#3b82f6", fixa:true },
+  cenico:        { label:"Ponto Cênico / Turismo", icone:"📸", cor:"#22c55e", fixa:true },
+  alimentacao:   { label:"Alimentação", icone:"🍔", cor:"#eab308", fixa:true },
+  tecnica:       { label:"Parada Técnica / Descanso", icone:"🛑", cor:"#9aa7b4", fixa:true }
+};
+const CAT_PARADA_PADRAO = "tecnica";
+/* garante que APP.catParadas exista (padrão + personalizadas do usuário) */
+function garantirCategorias(){
+  if(!APP.catParadas){
+    APP.catParadas = JSON.parse(JSON.stringify(CAT_PARADA_DEFAULT));
+    salvar();
+  } else {
+    // reinsere as padrão caso faltem (nunca perder as fixas)
+    let mud=false;
+    for(const k in CAT_PARADA_DEFAULT){ if(!APP.catParadas[k]){ APP.catParadas[k]=JSON.parse(JSON.stringify(CAT_PARADA_DEFAULT[k])); mud=true; } }
+    if(mud) salvar();
+  }
+}
+/* lista viva de categorias */
+function CATS(){ garantirCategorias(); return APP.catParadas; }
+function catParada(key){ const c=CATS(); return c[key] || c[CAT_PARADA_PADRAO]; }
+
 const IC_LIXEIRA = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
 
 function renderGastos(){
@@ -752,6 +881,26 @@ function renderAjustes(){
   set("#moto-modelo", m.modelo);
   set("#moto-placa", m.placa);
   set("#moto-consumo", m.consumo);
+  renderCategoriasAjustes();
+}
+function renderCategoriasAjustes(){
+  const box=document.querySelector("#lista-categorias"); if(!box) return;
+  const cats=CATS();
+  box.innerHTML=Object.keys(cats).map(k=>{
+    const c=cats[k];
+    return `<div class="parada" style="justify-content:space-between">
+      <span class="cat-badge" style="background:${c.cor}">${c.icone}</span>
+      <span class="nome" style="flex:1">${c.label}${c.fixa?' <span class="hint">(padrão)</span>':''}</span>
+      ${c.fixa?'' : `<button class="ico-btn del" style="width:30px;height:30px" onclick="excluirCategoria('${k}')">${IC_LIXEIRA}</button>`}
+    </div>`;
+  }).join("") + `<button class="btn sec sm" style="width:100%;margin-top:10px" onclick="formNovaCategoria('ajustes')">＋ Nova categoria</button>`;
+}
+function excluirCategoria(k){
+  const c=CATS()[k]; if(!c||c.fixa) return;
+  confirmar("Excluir categoria?",
+    `A categoria <b>"${c.label}"</b> será removida. As paradas que a usavam passam a mostrar a categoria padrão.`,
+    "Excluir categoria",
+    ()=>{ delete APP.catParadas[k]; salvar(); renderCategoriasAjustes(); toast("Categoria excluída"); });
 }
 
 const _bmoto=document.querySelector("#btn-salvar-moto");
@@ -834,11 +983,12 @@ function desenharMapa(){
     }
     // paradas desta etapa
     (e.paradas||[]).forEach(p=>{
-      const pc = COORD_PARADAS[p.nome];
-      if(pc){
-        const icon=L.divIcon({className:"", html:`<div class="pin-stop"></div>`, iconSize:[18,18], iconAnchor:[9,9]});
-        const m=L.marker(pc,{icon}).bindPopup(`<b>📍 ${p.nome}</b><br>Parada · ${e.dia}`);
-        _layerParadas.addLayer(m); bounds.push(pc);
+      const pcoord = COORD_PARADAS[p.nome];
+      if(pcoord){
+        const cat=catParada(p.cat);
+        const icon=L.divIcon({className:"", html:`<div class="pin-stop" style="background:${cat.cor}" title="${cat.label}">${cat.icone}</div>`, iconSize:[22,22], iconAnchor:[11,11]});
+        const m=L.marker(pcoord,{icon}).bindPopup(`<b>${cat.icone} ${p.nome}</b><br>${cat.label} · ${e.dia}`);
+        _layerParadas.addLayer(m); bounds.push(pcoord);
       }
     });
   });
@@ -879,6 +1029,7 @@ if(_bTog) _bTog.onclick=()=>{
 };
 
 /* ---------- inicializa ---------- */
+garantirCategorias();
 render();
 bootNuvem();
 atualizarStatusNuvem();

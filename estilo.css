@@ -216,8 +216,9 @@ textarea { resize:vertical; min-height:64px; }
   font-size:12px; box-shadow:0 2px 6px rgba(0,0,0,.5);
 }
 .pin-stop {
-  background:var(--info); color:#06121f; border:2px solid #0b0e12;
-  border-radius:50%; width:18px; height:18px; box-shadow:0 2px 5px rgba(0,0,0,.5);
+  color:#111; border:2px solid #0b0e12; border-radius:50%;
+  width:22px; height:22px; display:grid; place-items:center; font-size:12px;
+  box-shadow:0 2px 5px rgba(0,0,0,.5);
 }
 
 
@@ -263,3 +264,34 @@ textarea { resize:vertical; min-height:64px; }
   background:var(--card-2); border:1px solid var(--border); border-radius:20px;
   padding:5px 12px; font-size:12px; font-weight:600; color:var(--txt);
 }
+
+
+/* ---------- CATEGORIAS DE PARADA ---------- */
+.cat-chips { display:flex; flex-wrap:wrap; gap:8px; margin:6px 0 4px; }
+.cat-chip {
+  display:inline-flex; align-items:center; gap:5px; cursor:pointer;
+  background:var(--bg-2); border:1.5px solid var(--border); color:var(--txt);
+  border-radius:20px; padding:9px 13px; font-size:13px; font-weight:600;
+}
+.cat-chip:active { transform:scale(.96); }
+.cat-chip.sel { font-weight:800; }
+
+/* badge colorido da categoria na lista de paradas */
+.parada .cat-badge {
+  flex:none; width:34px; height:34px; border-radius:9px;
+  display:grid; place-items:center; font-size:18px; color:#111;
+}
+.parada .nome { line-height:1.25; }
+.parada .cat-label { font-size:11px; font-weight:700; }
+.parada.done .cat-label { opacity:.5; }
+
+
+/* ---------- CRIAÇÃO DE CATEGORIA (swatches) ---------- */
+.cat-chip.novo { border-style:dashed; color:var(--txt-dim); }
+.swatches { display:flex; flex-wrap:wrap; gap:8px; margin-top:4px; }
+.swatch {
+  width:40px; height:40px; border-radius:10px; border:2px solid var(--border);
+  cursor:pointer; display:grid; place-items:center; font-size:18px; background:var(--bg-2);
+}
+.swatch.ic { color:var(--txt); }
+.swatch.sel { border-color:#fff; box-shadow:0 0 0 2px var(--accent); }
