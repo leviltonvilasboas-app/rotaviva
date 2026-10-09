@@ -31,6 +31,7 @@ const store = {
    ============================================================ */
 let APP = carregarApp();
 let S = viagemAtiva();          // referência à viagem ativa
+garantirMoto();
 
 /* ---------- integração com a nuvem (Firebase) ---------- */
 let _nuvemJaMesclou=false;
@@ -60,16 +61,18 @@ function _aoAtualizarNuvem(evento){
 }
 function atualizarStatusNuvem(){
   const el=document.querySelector("#cloud-status"); if(!el || !window.CLOUD) return;
+  // Padrão de mercado: Online (verde) quando conectado ao banco;
+  // Offline (vermelho) quando sem internet ou sem conexão com o banco.
   const map={
-    local:["☁️ Local","var(--txt-dim)"],
-    sincronizando:["🔄 Sincronizando…","var(--warn)"],
-    salvando:["🔄 Salvando…","var(--warn)"],
-    nuvem:["✅ Nuvem","var(--ok)"],
-    offline:["📴 Offline (salvo)","var(--info)"],
-    erro:["⚠️ Só local","var(--danger)"]
+    sincronizando:["🟢 Sincronizando…","var(--ok)"],
+    salvando:["🟢 Sincronizando…","var(--ok)"],
+    nuvem:["🟢 Online","var(--ok)"],
+    offline:["🔴 Offline","var(--danger)"],
+    local:["🔴 Offline","var(--danger)"],
+    erro:["🔴 Offline","var(--danger)"]
   };
   const s=window.CLOUD.status||"local";
-  const [txt,cor]=map[s]||map.local;
+  const [txt,cor]=map[s]||map.offline;
   el.textContent=txt; el.style.color=cor;
   const full=document.querySelector("#cloud-status-full");
   if(full){ full.textContent=txt; full.style.color=cor; }
@@ -134,10 +137,24 @@ function carregarApp(){
     }
   } catch(e){}
   // primeira vez: cria o app já com a Expedição Atacama migrada
-  const app = { viagens:[ viagemAtacama() ], ativa:"v_atacama_2027" };
+  const app = {
+    viagens:[ viagemAtacama() ],
+    ativa:"v_atacama_2027",
+    moto: { marca:"Royal Enfield", modelo:"Super Meteor 650", placa:"", consumo:18 }
+  };
   store.set(KEY, JSON.stringify(app));
   return app;
 }
+/* garante que APP.moto exista mesmo em dados salvos antes desta versão */
+function garantirMoto(){
+  if(!APP.moto){
+    const c = (APP.viagens[0] && APP.viagens[0].viagem && APP.viagens[0].viagem.consumoPlanejado) || 18;
+    APP.moto = { marca:"Royal Enfield", modelo:"Super Meteor 650", placa:"", consumo:c };
+    salvar();
+  }
+}
+/* consumo da moto (global) usado em todas as viagens */
+function consumoMoto(){ return (APP.moto && Number(APP.moto.consumo)) || 18; }
 
 function viagemAtiva(){
   return APP.viagens.find(v=>v.id===APP.ativa) || APP.viagens[0];
@@ -285,8 +302,9 @@ function formNovaViagem(){
     <label class="fld">Destino principal</label><input id="nv-destino" placeholder="Ex.: Bariloche – AR">
     <div class="row2">
       <div><label class="fld">Orçamento (R$)</label><input id="nv-orc" type="number" value="0"></div>
-      <div><label class="fld">Consumo (km/l)</label><input id="nv-cons" type="number" value="18"></div>
+      <div><label class="fld">Câmbio US$ → R$</label><input id="nv-cambio" type="number" step="0.01" value="5.40"></div>
     </div>
+    <p class="hint">O consumo da moto (km/l) é definido em Ajustes → Minha moto e vale para todas as viagens.</p>
     <button class="btn" onclick="salvarNovaViagem()">Criar viagem</button>`);
 }
 function salvarNovaViagem(){
@@ -296,9 +314,36 @@ function salvarNovaViagem(){
   v.viagem.origem=$("#nv-origem").value.trim();
   v.viagem.destinoPrincipal=$("#nv-destino").value.trim();
   v.viagem.orcamentoTotal=Number($("#nv-orc").value)||0;
-  v.viagem.consumoPlanejado=Number($("#nv-cons").value)||18;
+  v.viagem.cambioUSD_BRL=Number($("#nv-cambio").value)||5.40;
   salvar(); fecharModal(); render();
   document.querySelector('.tabbar button[data-view="resumo"]').click();
+}
+
+/* editar os DADOS de uma viagem (orçamento/consumo/câmbio são por viagem) */
+function formEditarViagem(id){
+  const v=APP.viagens.find(x=>x.id===id); if(!v) return;
+  const d=v.viagem;
+  abrirModal(`<button class="close" onclick="fecharModal()">×</button>
+    <h3>Dados da viagem</h3>
+    <label class="fld">Nome da viagem</label>
+    <input id="ev-nome" value="${(v.nome||'').replace(/"/g,'&quot;')}">
+    <label class="fld">Origem</label><input id="ev-origem" value="${(d.origem||'').replace(/"/g,'&quot;')}">
+    <label class="fld">Destino principal</label><input id="ev-destino" value="${(d.destinoPrincipal||'').replace(/"/g,'&quot;')}">
+    <div class="row2">
+      <div><label class="fld">Orçamento (R$)</label><input id="ev-orc" type="number" value="${d.orcamentoTotal||0}"></div>
+      <div><label class="fld">Câmbio US$ → R$</label><input id="ev-cambio" type="number" step="0.01" value="${d.cambioUSD_BRL||5.40}"></div>
+    </div>
+    <button class="btn" onclick="salvarEdicaoViagem('${id}')">Salvar dados</button>`);
+}
+function salvarEdicaoViagem(id){
+  const v=APP.viagens.find(x=>x.id===id); if(!v) return;
+  const nome=$("#ev-nome").value.trim(); if(!nome){ toast("Dê um nome"); return; }
+  v.nome=nome; v.viagem.titulo=nome;
+  v.viagem.origem=$("#ev-origem").value.trim();
+  v.viagem.destinoPrincipal=$("#ev-destino").value.trim();
+  v.viagem.orcamentoTotal=Number($("#ev-orc").value)||0;
+  v.viagem.cambioUSD_BRL=Number($("#ev-cambio").value)||5.40;
+  salvar(); fecharModal(); render(); toast("Dados da viagem salvos");
 }
 function formRenomear(id){
   const v=APP.viagens.find(x=>x.id===id); if(!v) return;
@@ -323,7 +368,7 @@ function confirmarExcluir(id){
    ============================================================ */
 function renderResumo(){
   const g=totalGasto(), orc=S.viagem.orcamentoTotal, pct=orc?Math.min(100,g/orc*100):0;
-  const km=kmTotal(), litros=km/(S.viagem.consumoPlanejado||18);
+  const km=kmTotal(), litros=km/consumoMoto();
 
   $("#kpi-grid").innerHTML = `
     <div class="kpi accent"><div class="label">Distância total</div>
@@ -331,7 +376,7 @@ function renderResumo(){
       <div class="sub">${S.etapas.length} etapas</div></div>
     <div class="kpi"><div class="label">Combustível (plan.)</div>
       <div class="value">${Math.round(litros)} L</div>
-      <div class="sub">a ${S.viagem.consumoPlanejado} km/l</div></div>
+      <div class="sub">a ${consumoMoto()} km/l</div></div>
     <div class="kpi"><div class="label">Período</div>
       <div class="value" style="font-size:16px">${dataBR(S.viagem.dataInicio)}–${dataBR(S.viagem.dataFim)}</div>
       <div class="sub">Out/2027 · 16 dias</div></div>
@@ -636,15 +681,23 @@ function toggleCheck(k){ k=decodeURIComponent(k); S.checkState[k]=!S.checkState[
    VIEW AJUSTES + BACKUP
    ============================================================ */
 function renderAjustes(){
-  $("#aj-orcamento").value=S.viagem.orcamentoTotal;
-  $("#aj-consumo").value=S.viagem.consumoPlanejado;
-  $("#aj-cambio").value=S.viagem.cambioUSD_BRL;
+  garantirMoto();
+  const m=APP.moto||{};
+  const set=(id,v)=>{ const el=document.querySelector(id); if(el) el.value=v??""; };
+  set("#moto-marca", m.marca);
+  set("#moto-modelo", m.modelo);
+  set("#moto-placa", m.placa);
+  set("#moto-consumo", m.consumo);
 }
-$("#btn-salvar-ajustes").onclick=()=>{
-  S.viagem.orcamentoTotal=Number($("#aj-orcamento").value)||0;
-  S.viagem.consumoPlanejado=Number($("#aj-consumo").value)||18;
-  S.viagem.cambioUSD_BRL=Number($("#aj-cambio").value)||5.4;
-  salvar(); render(); toast("Ajustes salvos");
+
+const _bmoto=document.querySelector("#btn-salvar-moto");
+if(_bmoto) _bmoto.onclick=()=>{
+  garantirMoto();
+  APP.moto.marca=$("#moto-marca").value.trim();
+  APP.moto.modelo=$("#moto-modelo").value.trim();
+  APP.moto.placa=$("#moto-placa").value.trim().toUpperCase();
+  APP.moto.consumo=Number($("#moto-consumo").value)||18;
+  salvar(); render(); toast("Dados da moto salvos");
 };
 $("#btn-export").onclick=()=>{
   const blob=new Blob([JSON.stringify(S,null,2)],{type:"application/json"});
