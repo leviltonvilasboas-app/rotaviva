@@ -1016,9 +1016,11 @@ async function consultarTrechoRodoviario(origem,destino,cache){
 function initMapa(){
   if(_map || typeof L==="undefined") return;
   _map = L.map("mapa", {zoomControl:true, attributionControl:true}).setView([-25,-63], 4);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom:18, attribution:"© OpenStreetMap"
-  }).addTo(_map);
+L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+  maxZoom: 19,
+  subdomains: "abcd",
+  attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+}).addTo(_map);
   _layerRota=L.layerGroup().addTo(_map);
   const temCluster = (typeof L.markerClusterGroup === "function");
   _layerDest = temCluster
