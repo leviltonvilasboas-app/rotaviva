@@ -1,0 +1,19 @@
+ROTAVIVA — INTEGRAÇÃO INICIAL COM GOOGLE ROUTES
+
+Arquivos alterados:
+- app.js: consulta o serviço Cloud Run quando a aba Mapa é aberta, decodifica as polilinhas rodoviárias e desenha os trechos no Leaflet. Mantém um cache local das rotas e usa um traçado aproximado como fallback quando não há resposta.
+- sw.js: incrementa o cache para rotaviva-v8 para forçar a atualização dos arquivos no PWA.
+
+COMO APLICAR
+1. Faça uma cópia de segurança dos arquivos atuais do repositório.
+2. No GitHub, substitua somente app.js e sw.js pelos arquivos deste pacote.
+3. Publique/aguarde o GitHub Pages atualizar.
+4. Abra o RotaViva com internet, entre na aba Mapa e aguarde as rotas serem calculadas.
+5. Confirme que o mapa continua abrindo e que os marcadores/paradas continuam aparecendo.
+
+OBSERVAÇÕES IMPORTANTES
+- A integração usa o endpoint público Cloud Run já testado: https://rotaviva-routes-579036776924.southamerica-east1.run.app
+- A chave do Google Maps não foi incluída no frontend; ela deve permanecer apenas como variável de ambiente no Cloud Run.
+- Esta primeira integração desenha a geometria real da rota no mapa. Ainda não atualiza automaticamente os quilômetros/duração no roteiro nem calcula abastecimentos/pausas.
+- Os trechos são consultados sequencialmente e as respostas são armazenadas no localStorage para evitar chamadas repetidas.
+- A duração e distância retornadas pela API são guardadas no cache, mas ainda não alteram os dados planejados da viagem.

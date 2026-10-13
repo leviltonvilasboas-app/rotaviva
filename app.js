@@ -939,9 +939,79 @@ $("#btn-add-abast").onclick=modalAbast;
 
 
 /* ============================================================
-   VIEW MAPA (Leaflet + OpenStreetMap)
+   VIEW MAPA (Leaflet + OpenStreetMap + Google Routes)
+   A rota rodoviária é consultada pelo Cloud Run; sem rede/API,
+   o mapa mantém o traçado aproximado anterior.
    ============================================================ */
+const ROTAVIVA_ROUTES_URL = "https://rotaviva-routes-579036776924.southamerica-east1.run.app";
+const ROTAVIVA_ROUTE_CACHE_KEY = "rotaviva_route_cache_v1";
 let _map=null, _layerRota=null, _layerDest=null, _layerParadas=null, _mostrarParadas=true;
+let _rotasRodoviarias = [];
+let _idDesenhoRota = 0;
+let _avisoRotaExibido = false;
+
+function lerCacheRotas(){
+  try { return JSON.parse(store.get(ROTAVIVA_ROUTE_CACHE_KEY) || "{}"); }
+  catch(_){ return {}; }
+}
+function gravarCacheRotas(cache){
+  try { store.set(ROTAVIVA_ROUTE_CACHE_KEY, JSON.stringify(cache)); }
+  catch(e){ console.warn("Não foi possível salvar cache de rotas", e); }
+}
+function chaveTrecho(origem,destino){ return `${String(origem).trim()}|||${String(destino).trim()}`; }
+
+// Decodifica a polilinha codificada do Google para coordenadas Leaflet [lat, lng].
+function decodificarPolilinha(encoded){
+  if(!encoded || typeof encoded !== "string") return [];
+  let index=0, lat=0, lng=0;
+  const pontos=[];
+  function proximo(){
+    let resultado=0, shift=0, b;
+    do {
+      if(index >= encoded.length) throw new Error("Polilinha incompleta");
+      b=encoded.charCodeAt(index++)-63;
+      resultado |= (b & 0x1f) << shift;
+      shift += 5;
+    } while(b >= 0x20);
+    return (resultado & 1) ? ~(resultado >> 1) : (resultado >> 1);
+  }
+  try {
+    while(index < encoded.length){
+      lat += proximo();
+      lng += proximo();
+      pontos.push([lat / 1e5, lng / 1e5]);
+    }
+  } catch(e){
+    console.warn("Falha ao decodificar polilinha", e);
+    return [];
+  }
+  return pontos;
+}
+
+async function consultarTrechoRodoviario(origem,destino,cache){
+  const chave=chaveTrecho(origem,destino);
+  if(cache[chave] && Array.isArray(cache[chave].pontos) && cache[chave].pontos.length > 1){
+    return cache[chave];
+  }
+  const resposta=await fetch(ROTAVIVA_ROUTES_URL, {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({origem,destino})
+  });
+  if(!resposta.ok) throw new Error(`Google Routes retornou HTTP ${resposta.status}`);
+  const dados=await resposta.json();
+  const encoded=dados.polilinha || dados.polyline || dados.encodedPolyline;
+  const pontos=decodificarPolilinha(encoded);
+  if(pontos.length < 2) throw new Error("A API não retornou uma geometria de rota válida");
+  const trecho={
+    origem, destino, pontos,
+    distanciaKm:Number(dados.distanciaKm) || (Number(dados.distanciaMetros) ? Number(dados.distanciaMetros)/1000 : null),
+    duracao:dados.duracao || null
+  };
+  cache[chave]=trecho;
+  gravarCacheRotas(cache);
+  return trecho;
+}
 
 function initMapa(){
   if(_map || typeof L==="undefined") return;
@@ -950,8 +1020,6 @@ function initMapa(){
     maxZoom:18, attribution:"© OpenStreetMap"
   }).addTo(_map);
   _layerRota=L.layerGroup().addTo(_map);
-  // agrupa marcadores próximos (clustering) quando o plugin está disponível;
-  // cai para layerGroup simples se não carregou (ex.: offline sem o plugin)
   const temCluster = (typeof L.markerClusterGroup === "function");
   _layerDest = temCluster
     ? L.markerClusterGroup({ maxClusterRadius:45, showCoverageOnHover:false, spiderfyOnMaxZoom:true })
@@ -968,10 +1036,8 @@ function desenharMapa(){
   if(!_map) return;
   _layerRota.clearLayers(); _layerDest.clearLayers(); _layerParadas.clearLayers();
 
-  // pontos da rota, na ordem das etapas, usando coordenadas por id
   const pts=[]; const bounds=[];
   pts.push(COORD_ORIGEM); bounds.push(COORD_ORIGEM);
-
   S.etapas.forEach((e,i)=>{
     const c = COORD_DESTINOS[e.id] || COORD_DESTINOS[e.dia];
     if(c){
@@ -981,7 +1047,6 @@ function desenharMapa(){
         .bindPopup(`<b>${e.dia} · ${e.destino}</b><br>${dataBR(e.data)} · ${e.km} km · ${paisNome(e.pais)}<br>🏨 ${e.hotel||"—"}`);
       _layerDest.addLayer(md);
     }
-    // paradas desta etapa
     (e.paradas||[]).forEach(p=>{
       const pcoord = COORD_PARADAS[p.nome];
       if(pcoord){
@@ -993,14 +1058,65 @@ function desenharMapa(){
     });
   });
 
-  // linha da rota
-  L.polyline(pts, {color:"#ff6b35", weight:3, opacity:.85}).addTo(_layerRota);
+  // Exibe as rotas rodoviárias já calculadas. Para trechos sem resposta,
+  // mantém temporariamente a linha aproximada entre os destinos conhecidos.
+  if(_rotasRodoviarias.length){
+    const desenhados=new Set();
+    _rotasRodoviarias.forEach(t=>{
+      if(t && t.pontos && t.pontos.length>1){
+        L.polyline(t.pontos,{color:"#ff6b35",weight:4,opacity:.9}).addTo(_layerRota);
+        t.pontos.forEach(p=>bounds.push(p));
+        desenhados.add(chaveTrecho(t.origem,t.destino));
+      }
+    });
+    // O fallback só é desenhado para trechos ainda não calculados.
+    const coordsEtapas=[COORD_ORIGEM];
+    S.etapas.forEach(e=>{ const c=COORD_DESTINOS[e.id]||COORD_DESTINOS[e.dia]; if(c) coordsEtapas.push(c); });
+    if(_rotasRodoviarias.length < S.etapas.length && coordsEtapas.length>1){
+      L.polyline(coordsEtapas,{color:"#ff6b35",weight:2,opacity:.35,dashArray:"5 7"}).addTo(_layerRota);
+    }
+  } else {
+    L.polyline(pts, {color:"#ff6b35", weight:3, opacity:.65, dashArray:"5 7"}).addTo(_layerRota);
+  }
 
   if(_mostrarParadas){ if(!_map.hasLayer(_layerParadas)) _map.addLayer(_layerParadas); }
   else { _map.removeLayer(_layerParadas); }
-
   _map._bounds = bounds;
   fitMapa();
+}
+
+async function carregarRotasRodoviarias(){
+  if(!S || !Array.isArray(S.etapas) || !S.etapas.length) return;
+  const idAtual=++_idDesenhoRota;
+  const cache=lerCacheRotas();
+  const rotas=[];
+  let falhas=0;
+  // Consulta um trecho por etapa, em sequência para evitar rajadas de requisições.
+  for(let i=0;i<S.etapas.length;i++){
+    if(idAtual!==_idDesenhoRota) return;
+    const e=S.etapas[i];
+    const origem=String(e.origem || (i===0 ? (S.viagem.origem || "Brasília, DF, Brasil") : S.etapas[i-1].destino) || "").trim();
+    const destino=String(e.destino || "").trim();
+    if(!origem || !destino) continue;
+    try {
+      const trecho=await consultarTrechoRodoviario(origem,destino,cache);
+      rotas.push(trecho);
+      _rotasRodoviarias=rotas.slice();
+      if(idAtual===_idDesenhoRota) desenharMapa();
+    } catch(err){
+      falhas++;
+      console.warn(`Não foi possível calcular ${origem} → ${destino}:`,err);
+    }
+  }
+  if(idAtual!==_idDesenhoRota) return;
+  _rotasRodoviarias=rotas;
+  desenharMapa();
+  if(falhas && !_avisoRotaExibido){
+    _avisoRotaExibido=true;
+    toast(`Alguns trechos não puderam ser calculados (${falhas}).`);
+  } else if(rotas.length){
+    toast(`Rotas rodoviárias carregadas: ${rotas.length} trecho(s)`);
+  }
 }
 
 function fitMapa(){
@@ -1010,16 +1126,15 @@ function fitMapa(){
   }
 }
 
-/* integra com a navegação: quando abrir a aba Mapa, inicializa/atualiza */
 function aoAbrirView(view){
   if(view==="mapa"){
-    setTimeout(()=>{ initMapa(); if(_map){ _map.invalidateSize(); desenharMapa(); } }, 60);
+    setTimeout(()=>{
+      initMapa();
+      if(_map){ _map.invalidateSize(); desenharMapa(); carregarRotasRodoviarias(); }
+    }, 60);
   }
 }
 
-
-
-/* botões do mapa */
 const _bFit=document.querySelector("#btn-fit"); if(_bFit) _bFit.onclick=fitMapa;
 const _bTog=document.querySelector("#btn-toggle-paradas");
 if(_bTog) _bTog.onclick=()=>{
